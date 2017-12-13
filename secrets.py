@@ -5,6 +5,7 @@
 username = "firstname.lastname"
 password = "open-sesame"
 webaddress = "http://elearning.pinecrest.edu"
+ftp_address = "website_address.address"
 ftp_username = "username"
 ftp_passwd = "open-sesame"
 gh_username = "username"
