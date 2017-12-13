@@ -12,6 +12,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import selenium.webdriver.support.ui as ui
+from selenium.webdriver.chrome.options import Options
 
 from secrets import *
 import sys, os, io
@@ -20,6 +21,7 @@ import types
 import json
 import ftplib
 from github import Github
+
 
 month_dict = {k: v for k,v in enumerate(calendar.month_abbr)}
 month_dict[13] = 'Jan' # Line 250 tries to print out month_dict[datetime.datetime.now().month+1], which is invalid when it's December
@@ -55,7 +57,7 @@ def fix_text_array(input_text_array):
 	else:
 		return text_array
 
-def extract_period_info(text_array):
+def extract_from_doc(text_array):
 	for i in range(len(text_array)):
 		text_array[i] = text_array[i].encode('utf-8')
 	i = 0
@@ -69,11 +71,15 @@ def extract_period_info(text_array):
 			continue
 		text_array[text_array.index(text)] = text.replace(" ","")
 		i += 1
+	print(text_array)
 	i = 0
 	while True:
-		if text_array[i][0] == "8" or text_array[i][0] == "1":
-			text_array = text_array[i:]
+		if "8:10" in text_array[i]:
+			text_array = text_array[i-1:]
 			break
+		# if text_array[i][0] == "8" or text_array[i][0] == "1":
+		# 	text_array = text_array[i:]
+		# 	break
 		i += 1
 	
 	if text_array[0] == "8:05":
@@ -101,8 +107,6 @@ def fetch_special_schedule(sched_index):
 
 
 	calendar_events[sched_index].click()
-
-	# adjust_to_click()
 
 	# Extract the date
 	possible_years = [str(i+2017) for i in range(100)]
@@ -170,7 +174,7 @@ def fetch_special_schedule(sched_index):
 		time.sleep(2)
 
 	schedule_times = [text.text for text in browser.find_elements_by_class_name("kix-wordhtmlgenerator-word-node")]
-	schedule_times = extract_period_info(schedule_times)
+	schedule_times = extract_from_doc(schedule_times)
 
 	sched_json = {time_date: {
 		'title': sched_title,
@@ -181,9 +185,13 @@ def fetch_special_schedule(sched_index):
 	}}
 
 
-	with open('schedules.json') as f:
-		data = json.load(f)
-
+	try:
+		with open('schedules.json') as f:
+			data = json.load(f)
+	except:
+		json_file = open('schedules.json', 'w+')
+		data = {}
+	print(sched_json)
 	data.update(sched_json)
 	with open("schedules.json", "w") as f:
 		json.dump(data, f)
@@ -195,118 +203,130 @@ def fetch_special_schedule(sched_index):
 	browser.execute_script("window.history.go(-1)")
 	browser.execute_script("window.history.go(-1)")
 
-# Main fetch process begins here
-browser = webdriver.Chrome(os.getcwd())
-try:
-	browser.get(webaddress)
-except:
-	print("ERROR: you probably don't have 'webaddress' defined in secrets.py. 'webaddress' is 'http://elearning.pinecrest.edu' in this case.")
-	exit(0)
-assert "Sign in" in  browser.page_source
-print("logging in...")
-elem =  browser.find_element_by_name("username")
-elem.clear()
-try:
-	elem.send_keys(username)
-except:
-	print("ERROR: you probably don't have 'username' defined in secrets.py")
-	exit(0)
-elem = browser.find_element_by_name("password")
-try:
-	elem.send_keys(password)
-except:
-	print("ERROR: you probably don't have 'password' defined in secrets.py")
-	exit(0)
-elem.send_keys(Keys.RETURN)
-first_result = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_partial_link_text('Calendar'))
-button_to_calendar = browser.find_element_by_partial_link_text("Calendar")
 
-main_window = browser.current_window_handle
+def fetch(upload_ftp=False, upload_gh=False):
+	# Main fetch process begins here
+	global browser
+	browser = webdriver.Chrome(os.getcwd() + '/chromedriver')
+	try:
+		browser.get(webaddress)
+	except:
+		print("ERROR: you probably don't have 'webaddress' defined in secrets.py. 'webaddress' is 'http://elearning.pinecrest.edu' in this case.")
+		exit(0)
+	assert "Sign in" in  browser.page_source
+	print("logging in...")
+	elem =  browser.find_element_by_name("username")
+	elem.clear()
+	try:
+		elem.send_keys(username)
+	except:
+		print("ERROR: you probably don't have 'username' defined in secrets.py")
+		exit(0)
+	elem = browser.find_element_by_name("password")
+	try:
+		elem.send_keys(password)
+	except:
+		print("ERROR: you probably don't have 'password' defined in secrets.py")
+		exit(0)
+	elem.send_keys(Keys.RETURN)
+	first_result = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_partial_link_text('Calendar'))
+	button_to_calendar = browser.find_element_by_partial_link_text("Calendar")
 
-button_to_calendar.send_keys(Keys.CONTROL + Keys.RETURN)
+	main_window = browser.current_window_handle
 
-time.sleep(0.5)
+	button_to_calendar.send_keys(Keys.CONTROL + Keys.RETURN)
 
-calendar_events = browser.find_elements_by_class_name("fc-event-title")
-calendar_events_temp = []
-for i in range(len(calendar_events)):
-	# This can an especially fragile part of the script. It only looks at
-	# calendar events if it has string "Special Schedule" in it.
-	if "Special Schedule" in calendar_events[i].text:
-		calendar_events_temp.append(calendar_events[i])
-calendar_events = calendar_events_temp
-current_month_items = len(calendar_events)
-this_month = datetime.datetime.now().strftime("%b")
+	time.sleep(0.5)
 
-################################
-# Begin to loop through events #
-################################
-for i in range(current_month_items):
-	fetch_special_schedule(i)
-	time.sleep(2)
+	calendar_events = browser.find_elements_by_class_name("fc-event-title")
+	calendar_events_temp = []
+	for i in range(len(calendar_events)):
+		# This can an especially fragile part of the script. It only looks at
+		# calendar events if it has string "Special Schedule" in it.
+		if "Special Schedule" in calendar_events[i].text:
+			calendar_events_temp.append(calendar_events[i])
+	calendar_events = calendar_events_temp
+	current_month_items = len(calendar_events)
+	this_month = datetime.datetime.now().strftime("%b")
 
-
-forwardback_buttons = browser.find_elements_by_class_name("fc-button-content")
-for i in forwardback_buttons:
-	if i.text == "Next":
-		next_month_button = i
-try:
-	next_month_button
-except NameError:
-	next_month_button = forwardback_buttons[1]
-
-next_month_button.click()
-
-time.sleep(0.5)
-
-calendar_events = browser.find_elements_by_class_name("fc-event-title")
-calendar_events_temp = []
-for i in range(len(calendar_events)):
-	if "Special Schedule" in calendar_events[i].text:
-		calendar_events_temp.append(calendar_events[i])
-calendar_events = calendar_events_temp
-
-for i in range(len(calendar_events)):
-	fetch_special_schedule(i)
-	time.sleep(2)
-
-print("Success! {0}: {1} items; {2}: {3} items; Process took {4} seconds.".format(
-		this_month, current_month_items, month_dict[datetime.datetime.now().month+1], len(calendar_events), (time.time()-start_time)))
-
-print("connecting to FTP server...")
-try:
-	ftp = ftplib.FTP(ftp_address)
-except:
-	print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
-	exit(0)
-print("logging in...")
-try:
-	ftp.login(user=ftp_username,passwd=ftp_passwd)
-except:
-	print("ERROR: you probably don't have 'ftp_username' or 'ftp_passwd' defined in secrets.py. These are the username and password to get into your FTP server for your website.")
-	exit(0)
-
-print("changing directory...")
-ftp.cwd('/dailyschedule.atwebpages.com/scripts')
-
-print("uploading schedules.json...")
-ftp.storbinary("STOR schedules.json", open("schedules.json","rb"))
-
-print("quitting FTP server...")
-ftp.quit()
+	################################
+	# Begin to loop through events #
+	################################
+	for i in range(current_month_items):
+		fetch_special_schedule(i)
+		time.sleep(2)
 
 
-print("logging into GitHub...")
-try:
-	g = Github(gh_username, gh_password)
-except:
-	print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py. PyGithub is also used to host schedules.json")
-	exit(0)
-print("searching for elearning repo...")
-for repo in g.get_user().get_repos():
-	if repo.name == "elearning":
-		print("found elearning repo")
-		print("committing schedules.json...")
-		file = repo.get_file_contents("/schedules.json")
-		repo.update_file("/schedules.json", "this commit is an update", open("schedules.json","rb").read(), file.sha)
-		print("finished!")
+	forwardback_buttons = browser.find_elements_by_class_name("fc-button-content")
+	for i in forwardback_buttons:
+		if i.text == "Next":
+			next_month_button = i
+	try:
+		next_month_button
+	except NameError:
+		next_month_button = forwardback_buttons[1]
+
+	next_month_button.click()
+
+	time.sleep(0.5)
+
+	calendar_events = browser.find_elements_by_class_name("fc-event-title")
+	calendar_events_temp = []
+	for i in range(len(calendar_events)):
+		if "Special Schedule" in calendar_events[i].text:
+			calendar_events_temp.append(calendar_events[i])
+	calendar_events = calendar_events_temp
+
+	for i in range(len(calendar_events)):
+		fetch_special_schedule(i)
+		time.sleep(2)
+
+	print("Success! {0}: {1} items; {2}: {3} items; Process took {4} seconds.".format(
+			this_month, current_month_items, month_dict[datetime.datetime.now().month+1], len(calendar_events), (time.time()-start_time)))
+
+	with open('schedules.json') as f:
+		data = json.load(f)
+	print("JSON:\n{}".format(data))
+
+	if upload_ftp:
+		print("connecting to FTP server...")
+		try:
+			ftp = ftplib.FTP(ftp_address)
+		except:
+			print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
+			exit(0)
+		print("logging in...")
+		try:
+			ftp.login(user=ftp_username,passwd=ftp_passwd)
+		except:
+			print("ERROR: you probably don't have 'ftp_username' or 'ftp_passwd' defined in secrets.py. These are the username and password to get into your FTP server for your website.")
+			exit(0)
+
+		print("changing directory...")
+		ftp.cwd('/dailyschedule.atwebpages.com/scripts')
+
+		print("uploading schedules.json...")
+		ftp.storbinary("STOR schedules.json", open("schedules.json","rb"))
+
+		print("quitting FTP server...")
+		ftp.quit()
+
+
+	if upload_gh:
+		print("logging into GitHub...")
+		try:
+			g = Github(gh_username, gh_password)
+		except:
+			print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py. PyGithub is also used to host schedules.json")
+			exit(0)
+		print("searching for elearning repo...")
+		for repo in g.get_user().get_repos():
+			if repo.name == "elearning":
+				print("found elearning repo")
+				print("committing schedules.json...")
+				file = repo.get_file_contents("/schedules.json")
+				repo.update_file("/schedules.json", "this commit is an update", open("schedules.json","rb").read(), file.sha)
+				print("finished!")
+
+if __name__ == "__main__":
+	fetch(upload_ftp=True, upload_gh=True)
