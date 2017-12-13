@@ -8,7 +8,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 import selenium.webdriver.support.ui as ui
 
-from secrets import username, password, webaddress, ftp_username, ftp_passwd, gh_username, gh_password, gdocs_email, gdocs_password
+from secrets import *
 import sys, os, io
 import re
 import types
@@ -148,11 +148,19 @@ def fetch_special_schedule(sched_index):
 		print("Waiting for login...")
 		elem = browser.find_element_by_name("identifier")
 		elem.clear()
-		elem.send_keys(gdocs_email)
+		try:
+			elem.send_keys(gdocs_email)
+		except:
+			print("ERROR: you probably don't have 'gdocs_email' defined in secrets.py")
+			exit(0)
 		elem.send_keys(Keys.RETURN)
 		time.sleep(2)
 		elem = browser.find_element_by_name("password")
-		elem.send_keys(gdocs_password)
+		try:
+			elem.send_keys(gdocs_password)
+		except:
+			print("ERROR: you probably don't have 'gdocs_password' defined in secrets.py")
+			exit(0)
 		elem.send_keys(Keys.RETURN)
 		time.sleep(2)
 
@@ -183,16 +191,27 @@ def fetch_special_schedule(sched_index):
 	browser.execute_script("window.history.go(-1)")
 
 # Main fetch process begins here
-browser = webdriver.Chrome('/Users/rodrigo.castellon/Downloads/chromedriver')
-
-browser.get(webaddress)
+browser = webdriver.Chrome(os.getcwd())
+try:
+	browser.get(webaddress)
+except:
+	print("ERROR: you probably don't have 'webaddress' defined in secrets.py. 'webaddress' is 'http://elearning.pinecrest.edu' in this case.")
+	exit(0)
 assert "Sign in" in  browser.page_source
 print("logging in...")
 elem =  browser.find_element_by_name("username")
 elem.clear()
-elem.send_keys(username)
+try:
+	elem.send_keys(username)
+except:
+	print("ERROR: you probably don't have 'username' defined in secrets.py")
+	exit(0)
 elem = browser.find_element_by_name("password")
-elem.send_keys(password)
+try:
+	elem.send_keys(password)
+except:
+	print("ERROR: you probably don't have 'password' defined in secrets.py")
+	exit(0)
 elem.send_keys(Keys.RETURN)
 first_result = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_partial_link_text('Calendar'))
 button_to_calendar = browser.find_element_by_partial_link_text("Calendar")
@@ -250,10 +269,17 @@ print("Success! {0}: {1} items; {2}: {3} items; Process took {4} seconds.".forma
 		this_month, current_month_items, month_dict[datetime.datetime.now().month+1], len(calendar_events), (time.time()-start_time)))
 
 print("connecting to FTP server...")
-ftp = ftplib.FTP('elearningschedule.atwebpages.com')
-
+try:
+	ftp = ftplib.FTP(ftp_address)
+except:
+	print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
+	exit(0)
 print("logging in...")
-ftp.login(user=ftp_username,passwd=ftp_passwd)
+try:
+	ftp.login(user=ftp_username,passwd=ftp_passwd)
+except:
+	print("ERROR: you probably don't have 'ftp_username' or 'ftp_passwd' defined in secrets.py. These are the username and password to get into your FTP server for your website.")
+	exit(0)
 
 print("changing directory...")
 ftp.cwd('/dailyschedule.atwebpages.com/scripts')
@@ -266,7 +292,11 @@ ftp.quit()
 
 
 print("logging into GitHub...")
-g = Github(gh_username, gh_password)
+try:
+	g = Github(gh_username, gh_password)
+except:
+	print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py. PyGithub is also used to host schedules.json")
+	exit(0)
 print("searching for elearning repo...")
 for repo in g.get_user().get_repos():
 	if repo.name == "elearning":
