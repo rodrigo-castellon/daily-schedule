@@ -1,3 +1,8 @@
+'''
+page_fetch.py fetches special schedule info, compiling into a readable .JSON format. It then saves this JSON object as a file
+and also uploads it to a GitHub repo and website through FTP
+'''
+
 import time
 import unicodedata
 import datetime
