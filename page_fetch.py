@@ -22,7 +22,6 @@ import json
 import ftplib
 from github import Github
 
-
 month_dict = {k: v for k,v in enumerate(calendar.month_abbr)}
 month_dict[13] = 'Jan' # Line 250 tries to print out month_dict[datetime.datetime.now().month+1], which is invalid when it's December
 inverse_month_dict = {v: k for k,v in enumerate(calendar.month_abbr)}
@@ -71,15 +70,11 @@ def extract_from_doc(text_array):
 			continue
 		text_array[text_array.index(text)] = text.replace(" ","")
 		i += 1
-	print(text_array)
 	i = 0
 	while True:
 		if "8:10" in text_array[i]:
 			text_array = text_array[i-1:]
 			break
-		# if text_array[i][0] == "8" or text_array[i][0] == "1":
-		# 	text_array = text_array[i:]
-		# 	break
 		i += 1
 	
 	if text_array[0] == "8:05":
@@ -154,7 +149,7 @@ def fetch_special_schedule(sched_index):
 	is_login_page = True if len(browser.find_elements_by_class_name("FgbZLd")) >= 1 else False
 
 	if is_login_page:
-		print("Waiting for login...")
+		print("Waiting for google doc login...")
 		elem = browser.find_element_by_name("identifier")
 		elem.clear()
 		try:
@@ -191,7 +186,6 @@ def fetch_special_schedule(sched_index):
 	except:
 		json_file = open('schedules.json', 'w+')
 		data = {}
-	print(sched_json)
 	data.update(sched_json)
 	with open("schedules.json", "w") as f:
 		json.dump(data, f)
@@ -203,7 +197,7 @@ def fetch_special_schedule(sched_index):
 	browser.execute_script("window.history.go(-1)")
 	browser.execute_script("window.history.go(-1)")
 
-def upload_ftp(data):
+def ftp_upload(data):
 	print("connecting to FTP server...")
 	try:
 		ftp = ftplib.FTP(ftp_address)
@@ -226,7 +220,7 @@ def upload_ftp(data):
 	print("quitting FTP server...")
 	ftp.quit()
 
-def upload_gh(data):
+def gh_upload(data):
 	print("logging into GitHub...")
 	try:
 		g = Github(gh_username, gh_password)
@@ -242,7 +236,7 @@ def upload_gh(data):
 			repo.update_file("/schedules.json", "this commit is an update", open("schedules.json","rb").read(), file.sha)
 			print("finished!")
 
-def fetch():
+def fetch(upload_ftp=False, upload_gh=False):
 	# Main fetch process begins here
 	global browser
 	browser = webdriver.Chrome(os.getcwd() + '/chromedriver')
@@ -324,9 +318,13 @@ def fetch():
 
 	with open('schedules.json') as f:
 		data = json.load(f)
-	print("JSON:\n{}".format(data))
+
+	if upload_ftp:
+		ftp_upload()
+	if upload_gh:
+		gh_upload()
 
 	return data
 
 if __name__ == "__main__":
-	fetch()
+	data = fetch(upload_ftp=True, upload_gh=True)
