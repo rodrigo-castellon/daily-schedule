@@ -203,8 +203,46 @@ def fetch_special_schedule(sched_index):
 	browser.execute_script("window.history.go(-1)")
 	browser.execute_script("window.history.go(-1)")
 
+def upload_ftp(data):
+	print("connecting to FTP server...")
+	try:
+		ftp = ftplib.FTP(ftp_address)
+	except:
+		print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
+		exit(0)
+	print("logging in...")
+	try:
+		ftp.login(user=ftp_username,passwd=ftp_passwd)
+	except:
+		print("ERROR: you probably don't have 'ftp_username' or 'ftp_passwd' defined in secrets.py. These are the username and password to get into your FTP server for your website.")
+		exit(0)
 
-def fetch(upload_ftp=False, upload_gh=False):
+	print("changing directory...")
+	ftp.cwd('/dailyschedule.atwebpages.com/scripts')
+
+	print("uploading schedules.json...")
+	ftp.storbinary("STOR schedules.json", open("schedules.json","rb"))
+
+	print("quitting FTP server...")
+	ftp.quit()
+
+def upload_gh(data):
+	print("logging into GitHub...")
+	try:
+		g = Github(gh_username, gh_password)
+	except:
+		print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py. PyGithub is also used to host schedules.json")
+		exit(0)
+	print("searching for elearning repo...")
+	for repo in g.get_user().get_repos():
+		if repo.name == "elearning":
+			print("found elearning repo")
+			print("committing schedules.json...")
+			file = repo.get_file_contents("/schedules.json")
+			repo.update_file("/schedules.json", "this commit is an update", open("schedules.json","rb").read(), file.sha)
+			print("finished!")
+
+def fetch():
 	# Main fetch process begins here
 	global browser
 	browser = webdriver.Chrome(os.getcwd() + '/chromedriver')
@@ -288,45 +326,7 @@ def fetch(upload_ftp=False, upload_gh=False):
 		data = json.load(f)
 	print("JSON:\n{}".format(data))
 
-	if upload_ftp:
-		print("connecting to FTP server...")
-		try:
-			ftp = ftplib.FTP(ftp_address)
-		except:
-			print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
-			exit(0)
-		print("logging in...")
-		try:
-			ftp.login(user=ftp_username,passwd=ftp_passwd)
-		except:
-			print("ERROR: you probably don't have 'ftp_username' or 'ftp_passwd' defined in secrets.py. These are the username and password to get into your FTP server for your website.")
-			exit(0)
-
-		print("changing directory...")
-		ftp.cwd('/dailyschedule.atwebpages.com/scripts')
-
-		print("uploading schedules.json...")
-		ftp.storbinary("STOR schedules.json", open("schedules.json","rb"))
-
-		print("quitting FTP server...")
-		ftp.quit()
-
-
-	if upload_gh:
-		print("logging into GitHub...")
-		try:
-			g = Github(gh_username, gh_password)
-		except:
-			print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py. PyGithub is also used to host schedules.json")
-			exit(0)
-		print("searching for elearning repo...")
-		for repo in g.get_user().get_repos():
-			if repo.name == "elearning":
-				print("found elearning repo")
-				print("committing schedules.json...")
-				file = repo.get_file_contents("/schedules.json")
-				repo.update_file("/schedules.json", "this commit is an update", open("schedules.json","rb").read(), file.sha)
-				print("finished!")
+	return data
 
 if __name__ == "__main__":
-	fetch(upload_ftp=True, upload_gh=True)
+	fetch()
