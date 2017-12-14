@@ -1,6 +1,8 @@
 # daily-schedule
 This is a personal project I made on the side. A public version for fetching special schedules is WIP.
 
+Link: http://dailyschedule.atwebpages.com/
+
 ![image](https://github.com/rodrigo-castellon/daily-schedule/blob/master/sitescreenshot.png)
 
 ## Prerequisites
@@ -13,7 +15,7 @@ This is a personal project I made on the side. A public version for fetching spe
 3. Move ChromeDriver file to project directory.
 4. Edit `secrets.py` to your own credentials.
 
-## Short Example
+## Short Fetch Schedule Example
 ```
 >>> import page_fetch as pf
 >>> schedules = pf.fetch() # note this process takes about ~1-2 minutes and will open a virtual chrome window
