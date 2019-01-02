@@ -401,13 +401,6 @@ def main_process(upload_ftp=False, upload_gh=False):
             else:
                 print("- {}".format(calendar_event.text))
 
-    print("Success! {0}: {1} schedules; {2}: {3} schedules; Process took {4} seconds.".format(
-            this_month,
-            current_month_items,
-            month_dict[(datetime.datetime.now().month+1) % 12],
-            len(calendar_events),
-            (time.time()-start_time)))
-
     with open('schedules.json') as f:
         data = json.load(f)
 
