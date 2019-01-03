@@ -53,38 +53,18 @@ def input_with_timeout(prompt, timeout):
         return sys.stdin.readline().rstrip('\n') # expect stdin to be line-buffered
     raise TimeoutExpired
 
-def get_time_indices(text_array):
-    global r
-    vmatch = np.vectorize(lambda x:bool(r.search(x)))
-    return vmatch(text_array)
-
 def extract_from_doc(text_array):
     global r
-    text_array = [x.strip().replace('\u200b', '') for x in text_array]
-    # we can use 'Period' as our anchor point, since it is always the first cell in the table
-    text_array = text_array[text_array.index([x for x in text_array if 'period' in x.lower()][0]) + 3:]
-    
-    time_indices = get_time_indices(text_array)
-    period_indices = np.where(~time_indices)[0]
-    time_indices = np.where(time_indices)[0]
+    text_array = [re.sub(r'[^\x00-\x7F]|[\n,\r,\t,\v]+', '', x) for x in text_array]
+    text_array = text_array[3:]
 
     schedule_times = {}
     assert(len(text_array) % 3 == 0)
-    for i in range(int(len(text_array) / 3)):
-        index = i*3
-        period = text_array[index]
-        # take out anything within parentheses
-        matches = list(re.finditer("\(.*?\)", period)) # finds everything with parentheses
-        print("MATCHES: {}".format(matches))
-        valuable_matches = [match for match in matches if len(list(re.finditer('[0-9]{1,2}', match.group()))) == 0]
-        print("VALUABLE MATCHES: {}".format(valuable_matches))
-        period = period[:matches[0].span()[0]] + ''.join([match.group() for match in valuable_matches])
-        begin = text_array[index+1]
-        end = text_array[index+2]
-        
-        begin = r.findall(begin)[0] if r.search(begin) else begin
-        end = r.findall(end)[0] if r.search(end) else end
-        schedule_times[period] = [begin, end]
+    for period, start, stop in zip(*[text_array[x:][::3] for x in range(3)]):
+        period = re.sub('\([^(\(,\))]*\d+[^(\(,\))]*\)', '', period).strip()
+        start = r.findall(start)[0] if r.search(start) else start
+        stop = r.findall(stop)[0] if r.search(stop) else stop
+        schedule_times[period] = [start, stop]
 
     return schedule_times
 
@@ -196,6 +176,7 @@ def fetch_special_schedule(calendar_event):
 
     ### EXTRACTING TIMES
     print('extracting times...')
+    print(text_elements)
     schedule_times = extract_from_doc(text_elements)
     print('extracted.')
 
@@ -422,11 +403,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--upload", action='store_true', help="upload schedules.json to the FTP server and the github page")
+    parser.add_argument("--test", action='store_true', help="test the 'extract_from_doc' function on 'extra.py' text arrays")
+    parser.add_argument("-n", help="number of tests", type=int)
     args = parser.parse_args()
     if args.upload:
         with open('schedules.json') as f:
           data = json.load(f)
         ftp_upload(data)
         gh_upload(data)
+    elif args.test:
+        from extra import text_arrays
+        for i, text_array in enumerate(text_arrays):
+            if i == args.n:
+                break
+            #print("TEXT ARRAY:\n{}".format(text_array))
+            print("OUTPUT:\n{}".format(extract_from_doc(text_array)))
     else:
         data = main_process(upload_ftp=True, upload_gh=True)
