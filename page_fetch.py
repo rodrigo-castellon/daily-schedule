@@ -1,7 +1,6 @@
-'''
-page_fetch.py fetches special schedule info, compiling into a readable .JSON format. It then saves this JSON object as a file
-and also uploads it to a GitHub repo and website through FTP
-'''
+""" Fetches special schedule info across arbitrary number of months, compiles these into a readable JSON format,
+saves them onto a file, and uploads to a GitHub repo and website through FTP.
+"""
 
 import time
 import unicodedata
@@ -10,13 +9,18 @@ import calendar
 
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import NoSuchElementException, InvalidElementStateException
 from selenium.webdriver.common.by import By
 import selenium.webdriver.support.ui as ui
 from selenium.webdriver.chrome.options import Options
 
 from secrets import *
-import sys, os, io
-import re, json, ftplib
+import sys
+import os
+import io
+import re
+import json
+import ftplib
 from threading import Timer
 from github import Github
 from bcolors import bcolors
@@ -24,20 +28,18 @@ import numpy as np
 import select, sys
 import argparse
 import datetime
+import operator
 
 timeout = 10
 
 month_dict = {k: v for k,v in enumerate(calendar.month_abbr)}
 inverse_month_dict = {v: k for k,v in enumerate(calendar.month_abbr)}
 
-start_time = time.time()
-global r
-r = re.compile('[0-9]{1,2}:[0-9]{2}')
-
 class TimeoutExpired(Exception):
     pass
 
 def get_data(fname='schedules.json'):
+    """ Get the dictionary from the .json file. """
     try:
         with open('schedules.json') as f:
             data = json.load(f)
@@ -46,6 +48,8 @@ def get_data(fname='schedules.json'):
     return data
 
 def input_with_timeout(prompt, timeout):
+    """ Prompt the user to input text but with a timeout. """
+
     sys.stdout.write(prompt)
     sys.stdout.flush()
     ready, _, _ = select.select([sys.stdin], [],[], timeout)
@@ -54,7 +58,12 @@ def input_with_timeout(prompt, timeout):
     raise TimeoutExpired
 
 def extract_from_doc(text_array):
-    global r
+    """ Convert the list of pieces of text within cells in the Google Doc into a usable
+    dictionary format and return it.
+    """
+
+    r = re.compile('[0-9]{1,2}:[0-9]{2}')  # Matches clock times
+
     text_array = [re.sub(r'[^\x00-\x7F]|[\n,\r,\t,\v]+', '', x) for x in text_array]
     text_array = text_array[3:]
 
@@ -69,6 +78,8 @@ def extract_from_doc(text_array):
     return schedule_times
 
 def fetch_special_schedule(calendar_event):
+    """ Fetch a single special schedule on the calendar page.  """
+
     ### CLICKING ON CALENDAR EVENT
     calendar_event.click()
 
@@ -76,7 +87,7 @@ def fetch_special_schedule(calendar_event):
     print("extracting date...")
     possible_years = [str(i+2017) for i in range(100)]
     try:
-        time_date = browser.find_elements_by_class_name("odd")
+        time_date = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_class_name("odd"))
         time_date = [x.text for x in time_date]
         time_date = [x for x in time_date if 'Time' in x][0].split()[1:]
         time_date = ' '.join(time_date)
@@ -88,7 +99,7 @@ def fetch_special_schedule(calendar_event):
     ### EXTRACT NAME OF SPECIAL SCHEDULE
     print("extracting name of special schedule...")
     try:
-        sched_title = browser.find_element_by_class_name("template-title").text
+        sched_title = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_class_name("template-title").text)
         print('extracted.')
     except:
         print("No special schedule title found.")
@@ -96,7 +107,7 @@ def fetch_special_schedule(calendar_event):
     ### CLICK ON "VIEW ITEM" BUTTON
     print("clicking on \"view item\" button...")
     try:
-        view_item_button = browser.find_element_by_partial_link_text("View Item")
+        view_item_button = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_partial_link_text("View Item"))
     except:
         print("Could not find 'View Item' button. Going back to calendar feed.")
         browser.execute_script("window.history.go(-1)")
@@ -110,7 +121,7 @@ def fetch_special_schedule(calendar_event):
     link_to_schedule_XPATH = '//*[@class="ext  sExtlink-processed"]'
     try:
         link_to_schedule = browser.find_element_by_xpath(link_to_schedule_XPATH)
-    except:
+    except NoSuchElementException:
         print("unable to find google doc.")
         try:
             user = input_with_timeout("[Enter] to go back to the calendar.\n>", 3)
@@ -128,7 +139,7 @@ def fetch_special_schedule(calendar_event):
     is_redirect = True if len(browser.find_elements_by_class_name("extlink-redirect")) >= 1 else False
     if is_redirect:
         print("Redirecting...")
-        link = browser.find_elements_by_partial_link_text("http")[0]
+        link = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_partial_link_text("http")[0])
         link.click()
         time.sleep(1)
 
@@ -136,12 +147,12 @@ def fetch_special_schedule(calendar_event):
     is_login_page = True if len(browser.find_elements_by_class_name("ck6P8")) >= 1 else False
     if is_login_page:
         print("this document requires login credentials. logging in...")
-        elem = browser.find_element_by_name("identifier")
+        elem = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_name("identifier"))
         elem.clear()
         print("entering email address...")
         try:
             elem.send_keys(gdocs_email)
-        except:
+        except NameError:
             print("ERROR: you probably don't have 'gdocs_email' defined in secrets.py")
             exit(0)
         print("entered.")
@@ -150,9 +161,15 @@ def fetch_special_schedule(calendar_event):
         time.sleep(2)
         print('pressed.')
         print("finding password box...")
-        elem = browser.find_element_by_name("password")
+        elem = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_name('password'))
         print("entering password...")
-        elem.send_keys(gdocs_password)
+        while True:
+            try:
+                elem.send_keys(gdocs_password)
+                break
+            except InvalidElementStateException:
+                print("USER! CLICK THERE!")
+                time.sleep(1)
         elem.send_keys(Keys.RETURN)
         print("logged in.")
         time.sleep(2)
@@ -176,52 +193,57 @@ def fetch_special_schedule(calendar_event):
 
     ### EXTRACTING TIMES
     print('extracting times...')
-    print(text_elements)
     schedule_times = extract_from_doc(text_elements)
     print('extracted.')
 
     ### LOAD INTO THE JSON OBJECT
-    sched_json = {time_date: {
-        'title': sched_title,
-        'url': browser.current_url,
-        'date': int(time_date.split()[2][:-1]),
-        'month_num': inverse_month_dict[time_date.split()[1]],
-        'datetime': str(datetime.datetime.strptime(time_date, '%A, %b %d, %Y')),
-        'schedule': schedule_times
-    }}
-
-
     try:
-        with open('schedules.json') as f:
-            data = json.load(f)
-    except:
-        data = {}
+        date_time = str(datetime.datetime.strptime(time_date, '%A, %b %d, %Y'))
+    except ValueError as v:
+        if len(v.args) > 0 and v.args[0].startswith('unconverted data remains: '):
+            altered = time_date[:-(len(v.args[0]) - 26)]
+            date_time = str(datetime.datetime.strptime(altered, '%A, %b %d, %Y'))
+        else:
+            raise
+    sched_json = {
+        date_time: {
+            'title': sched_title,
+            'url': browser.current_url,
+            'time_date': time_date,
+            'schedule': schedule_times
+        }
+    }
+
+
+    data = get_data()
     
     data.update(sched_json)
     with open("schedules.json", "w") as f:
         json.dump(data, f)
 
-    if is_redirect:
-        browser.execute_script("window.history.go(-1)")
-
-    if is_login_page: # This is because we logged in. Thus we need to go back twice extra.
-        browser.execute_script("window.history.go(-1)")
-        browser.execute_script("window.history.go(-1)")
     print("going back...")
-    browser.execute_script("window.history.go(-1)")
-    browser.execute_script("window.history.go(-1)")
+    while True:
+        browser.execute_script("window.history.go(-1)")
+        try:
+            browser.find_element_by_xpath('//*[@id="fcalendar"]/table/tbody/tr/td[2]/span')
+        except NoSuchElementException:
+            continue
+        else:
+            break
 
 def ftp_upload(data):
+    """ Upload the data (encoded as a dictionary) to the FTP server. """
+
     print("connecting to FTP server...")
     try:
         ftp = ftplib.FTP(ftp_address)
-    except:
+    except NameError:
         print("ERROR: you probably don't have 'ftp_address' defined in secrets.py.")
         exit(0)
     print("logging in...")
     try:
         ftp.login(user=ftp_username,passwd=ftp_passwd)
-    except:
+    except NameError:
         print("ERROR: 'ftp_username' or 'ftp_passwd' are probably not defined in secrets.py."
             "These are the username and password to get into your FTP server for your website.")
         exit(0)
@@ -236,10 +258,11 @@ def ftp_upload(data):
     ftp.quit()
 
 def gh_upload(data):
+    """ Upload the data (encoded as a dictionary) to GitHub. """
     print("logging into GitHub...")
     try:
         g = Github(gh_username, gh_password)
-    except:
+    except NameError:
         print("ERROR: you probably don't have 'gh_username' or 'gh_password' defined in secrets.py."
             "PyGithub is also used to host schedules.json")
         exit(0)
@@ -253,13 +276,14 @@ def gh_upload(data):
             print("finished!")
 
 def main_process(upload_ftp=False, upload_gh=False):
-    # Main fetch process begins here
+    """ Run the main user-directed schedule fetching process. """
+
     global browser
     browser = webdriver.Chrome(os.getcwd() + '/chromedriver')
     ### GO TO INITIAL WEBPAGE
     try:
         browser.get(webaddress)
-    except:
+    except NameError:
         print("ERROR: you probably don't have 'webaddress' defined in secrets.py."
             "'webaddress' is 'http://elearning.pinecrest.edu' in this case.")
         exit(0)
@@ -267,19 +291,19 @@ def main_process(upload_ftp=False, upload_gh=False):
     
     ### ENTER USERNAME
     print("logging in...")
-    elem =  browser.find_element_by_name("username")
+    elem =  ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_name("username"))
     elem.clear()
     try:
         elem.send_keys(username)
-    except:
+    except NameError:
         print("ERROR: you probably don't have 'username' defined in secrets.py")
         exit(0)
     
     ### ENTER PASSWORD
-    elem = browser.find_element_by_name("password")
+    elem = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_name("password"))
     try:
         elem.send_keys(password)
-    except:
+    except NameError:
         print("ERROR: you probably don't have 'password' defined in secrets.py")
         exit(0)
     
@@ -290,7 +314,7 @@ def main_process(upload_ftp=False, upload_gh=False):
     first_result = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_partial_link_text('Calendar'))
     print("logged in.")
     print("clicking \"Calendar\" button...")
-    button_to_calendar = browser.find_element_by_partial_link_text("Calendar")
+    button_to_calendar = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_partial_link_text("Calendar"))
 
     ### CLICK THE "CALENDAR" BUTTON
     button_to_calendar.send_keys(Keys.CONTROL + Keys.RETURN)
@@ -304,12 +328,11 @@ def main_process(upload_ftp=False, upload_gh=False):
         ### ASK FOR USER INPUT
         while True:
             ### GET AND PRINT OUT THE NAME OF THE MONTH IN TERMINAL
-            month = browser.find_element_by_class_name("fc-header-title").text.split()[0]
+            month = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_element_by_class_name("fc-header-title").text.split()[0])
 
             ### GET HOW MANY ARE ALREADY STORED IN "schedules.json"
             data = get_data()
-            keys = list(data.keys())
-            occurrences = len([x for x in keys if month[:3] in x])
+            occurrences = len([0 for key,item in data.items() if month[:3] in item['time_date']])
             print(bcolors.BOLD + bcolors.HEADER + month + " (" + str(occurrences) + " already stored)" + bcolors.ENDC)
             user = input("Do you want to scan?\n"
                          "- [y]es\n"
@@ -335,7 +358,7 @@ def main_process(upload_ftp=False, upload_gh=False):
         ### BEGIN LOOP FOR A SINGLE MONTH
         ### GET A LIST OF ALL EVENTS
         print("getting a list of all events...")
-        calendar_events = browser.find_elements_by_class_name("fc-event-title")
+        calendar_events = ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_class_name("fc-event-title"))
         print("found.")
 
         ### LOOP THROUGH EVENTS AND CHECK ONLY SPECIAL SCHEDULES
@@ -348,8 +371,8 @@ def main_process(upload_ftp=False, upload_gh=False):
             if sum([x in calendar_event.text.lower() for x in matches]) > 0:
                 data = get_data()
                 is_present = False
-                for key in data.keys():
-                    if data[key]['title'] == calendar_event.text:
+                for key, item in data.items():
+                    if item['time_date'] == calendar_event.text:
                         is_present = True
                         break
                 bold_type = bcolors.OKGREEN if (is_present) else bcolors.BOLD + bcolors.OKGREEN
@@ -365,14 +388,14 @@ def main_process(upload_ftp=False, upload_gh=False):
                 if not(user in ['y', 'yes']):
                     continue
                 fetch_special_schedule(calendar_event)
-                ui.WebDriverWait(browser, 15).until(lambda browser: browser.find_elements_by_class_name('fc-button-content'))
+                ui.WebDriverWait(browser, 15).until(find_button)
                 time.sleep(0.5)
                 ### GO BACK TO USER'S MONTH
                 print("DELTA MONTH: {}".format(delta_month))
                 match = ("Next", 1) if delta_month > 0 else ("Back", 0)
                 for i in range(abs(delta_month)):
                     #print("BLOEUHLOEURLEODUROGEDURGDOELRDUO")
-                    forwardback_buttons = ui.WebDriverWait(browser, 5).until(find)
+                    forwardback_buttons = ui.WebDriverWait(browser, 5).until(find_button)
                     time.sleep(0.1)
                     forwardback_buttons[match[1]].click()
                     time.sleep(0.1)
@@ -382,8 +405,7 @@ def main_process(upload_ftp=False, upload_gh=False):
             else:
                 print("- {}".format(calendar_event.text))
 
-    with open('schedules.json') as f:
-        data = json.load(f)
+    data = get_data()
 
     if upload_ftp:
         ftp_upload(data)
@@ -392,7 +414,18 @@ def main_process(upload_ftp=False, upload_gh=False):
 
     return data
 
-def find(browser):
+def find_redirect(browser):
+    """ Find an element that will redirect to another page. """
+
+    element = browser.find_elements_by_class_name("extlink-redirect")
+    if element:
+        return element
+    else:
+        return False
+
+def find_button(browser):
+    """ Find an button element. """
+
     element = browser.find_elements_by_class_name("fc-button-content")
     if element:
         return element
@@ -409,6 +442,7 @@ if __name__ == "__main__":
     if args.upload:
         with open('schedules.json') as f:
           data = json.load(f)
+        data = data.sort(key=operator.attrgetter('count'))
         ftp_upload(data)
         gh_upload(data)
     elif args.test:
@@ -416,7 +450,6 @@ if __name__ == "__main__":
         for i, text_array in enumerate(text_arrays):
             if i == args.n:
                 break
-            #print("TEXT ARRAY:\n{}".format(text_array))
             print("OUTPUT:\n{}".format(extract_from_doc(text_array)))
     else:
         data = main_process(upload_ftp=True, upload_gh=True)
